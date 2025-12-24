@@ -3,10 +3,8 @@
 * I AM NOT RESPONSIBLE FOR, NOR AWARE OF, ANY USE, MISUSE, OR DISTRIBUTION OF THIS FILE,
 * INCLUDING WHO USED IT OR HOW IT WAS CREATED, NOR FOR ANY IRRESPONSIBLE OR IMPROPER USE.
  */
-
-
 import { DOMParser, Element } from "https://deno.land/x/deno_dom@v0.1.56/deno-dom-wasm.ts";
-import { encodeHex } from "jsr:@std/encoding/hex";
+import { hashCalculator } from "./utils.ts";
 
 
 /**
@@ -15,28 +13,28 @@ import { encodeHex } from "jsr:@std/encoding/hex";
  * @returns job data {title, url, company, location, salary, description, tags, periodInfo} 
  */
 
-export function extractJobNodetailedJob(article: Element) { 
+export function extractJobNodetailedJob(article: Element) {
 
-    const titleEl = article.querySelector("h2 a");
-    const companyEl = article.querySelector("p.company");
-    const locationEl = article.querySelector("ul.location li");
-    const salaryEl = article.querySelector("ul.salary li");
-    const descEl = article.querySelector("div.desc");
-    const tagsEl = Array.from(article.querySelectorAll("footer ul.tags li span"));
+  const titleEl = article.querySelector("h2 a");
+  const companyEl = article.querySelector("p.company");
+  const locationEl = article.querySelector("ul.location li");
+  const salaryEl = article.querySelector("ul.salary li");
+  const descEl = article.querySelector("div.desc");
+  const tagsEl = Array.from(article.querySelectorAll("footer ul.tags li span"));
 
-    // Build result object
-    const job = {
-        title: titleEl?.textContent.trim() || null,
-        url: titleEl?.getAttribute("href") || null,
-        company: companyEl?.textContent.trim() || null,
-        location: locationEl?.textContent.replace(/\s+/g, " ").trim() || null,
-        salary: salaryEl?.textContent.replace(/\s+/g, " ").trim() || null,
-        description: descEl?.textContent.replace(/\s+/g, " ").trim() || null,
-        tags: tagsEl.map(el => el.textContent.trim()),
-        periodInfo: tagsEl.length > 0 ? parsePeriodTag(tagsEl[0].textContent.trim()) : null
-    };
+  // Build result object
+  const job = {
+    title: titleEl?.textContent.trim() || null,
+    url: titleEl?.getAttribute("href") || null,
+    company: companyEl?.textContent.trim() || null,
+    location: locationEl?.textContent.replace(/\s+/g, " ").trim() || null,
+    salary: salaryEl?.textContent.replace(/\s+/g, " ").trim() || null,
+    description: descEl?.textContent.replace(/\s+/g, " ").trim() || null,
+    tags: tagsEl.map(el => el.textContent.trim()),
+    periodInfo: tagsEl.length > 0 ? parsePeriodTag(tagsEl[0].textContent.trim()) : null
+  };
 
-    return job;
+  return job;
 }
 
 
@@ -118,17 +116,46 @@ export async function extractJobFromJobDetails(html: string, version: number = 0
     applyUrl,
     postedSince: posted,
     collectedAt: new Date().toISOString(),
-    version 
+    version
   };
-  const hashCalculated = await hashCalculatored(JSON.stringify(object));
-  
-  return { ...object, hash: hashCalculated  };
+  const hashCalculated = await hashCalculator(JSON.stringify(object));
+
+  return { ...object, hash: hashCalculated };
 }
 
+/**
+ * extract the next page url from optioncarriere job listing page
+ * @abstract specific to optioncarriere.tn job when we have only the button of next page that is indicator
+ * of existing next page just return the pageNumber + 1 in the new url page param
+ * @param previousContent html content of previous page
+ * @param previousPageNumber previous page number (countable pages)
+ * @param previousUrl previous page url
+ * @returns next page url or null if not found
+ */
+export function extractNextPageUrlOptioncarriere(previousPageNumber: number, html: string, previousUrl: string): string | null {
 
+  const jsonResponse = JSON.parse(html);
+  const content_ = jsonResponse.m as string; // Extract the HTML content from the "m" field
+  const cleanedContent = content_.replace(/\\n|\\/g, ""); // remove all sort of new lines and escape characters
 
-const hashCalculatored = async (objectAsString: string)  => {
-    const encodedText = new TextEncoder().encode(objectAsString);
-    const hashBuffer = (await crypto.subtle.digest("SHA-256", encodedText));
-    return encodeHex(hashBuffer);
-}
+  const doc = new DOMParser().parseFromString(cleanedContent, "text/html");
+  if (!doc) return null;
+  const btn = doc.querySelector(
+    'p.more > button.next[data-name="p"]'
+  );
+  const value = btn?.getAttribute('data-value'); // "2"
+
+  console.log(`Next page button data-value: ${value}`);
+  console.log(`Previous URL: ${previousUrl}`);
+
+  // indicator of not existing next page
+  if (!value) 
+    return null; 
+
+  if (!previousUrl.includes("p=")) {
+    // first page case
+    return previousUrl + `&p=${value}`;
+  }
+
+  return previousUrl.replace(/p=\d+/g, `p=${value}`);
+} 

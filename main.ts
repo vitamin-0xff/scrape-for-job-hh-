@@ -11,8 +11,6 @@ const maxPageNumber = 100; // after this number we will get access forbidden
 
 const getPage = (pageNumber: number) => `https://www.optioncarriere.tn/emploi?s=&l=Tunisie&p=${pageNumber}`
 
-
-
 console.log(`Data saved to ${dataOutput}`);
 
 if(import.meta.main) { 

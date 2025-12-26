@@ -1,22 +1,11 @@
-// request-to-file.ts
-// request-to-file.ts
-
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.56/deno-dom-wasm.ts";
 import { authenticatedHeader } from "./authenticated-headers.ts";
 import { GlobalConfig } from "./global-config.ts";
-import { extractJobFromJobDetails, extractNextPageUrlOptioncarriere } from "./utils/extractors.ts";
+import { extractJobFromJobDetails } from "./utils/extractors.ts";
 import { logger } from "./utils/logger.ts";
-import { extractJobFromTanijobDetails, extractListJobsTanijob, extractTanitJob, nextPageExtractorTanijob, taniJobAuthenticatedHeader } from "./utils/tanijob-extractor.ts";
-import { extractDataFromHtml, fetchJobWithExtractorAndByNextUrl, fetchJobWithExtractorList, hashCalculator, stableStringify } from "./utils/utils.ts";
+import { extractJobFromTanijobDetails, extractListJobsTanijob, nextPageExtractorTanijob, taniJobAuthenticatedHeader } from "./utils/tanijob-extractor.ts";
+import { fetchJobWithExtractorAndByNextUrl, fetchJobWithExtractorList, hashCalculator, stableStringify } from "./utils/utils.ts";
 import { expandGlob } from "https://deno.land/std/fs/mod.ts";
 
-
-const keywords = ["mobile", "développeur", "informatique", "base de données", "systemes embarqués", "cloud", "devops", "full stack", "frontend", "backend"];
-
-const searchKeyword = keywords[4];
-const targetUrl = `https://www.optioncarriere.tn/emploi?s=&l=Tunisie&s=${encodeURIComponent(searchKeyword)}`;
-const dataOutput = `./res/data-${searchKeyword.replaceAll(" ", "-")}.json`;
-const maxPageNumber = 100; // after this number we will get access forbidden
 
 const Websites = {
   /**
@@ -40,51 +29,44 @@ const Websites = {
    * Scraper for tanijob website
    */
   tanijob: {
-    scrapeListJobs: async () => {
-    /**
-     * step 1: get all list of jobs possible and put it into a file
-     */
-    /**
-     * examples of urls
-     *  This search with filter by city [Ariana, Tunis, Sfax]
-     *  https://www.tanitjobs.com/jobs/?searchId=1766740867.3536&action=refine&Location_City[multi_like_and][]=Ariana,Tunis,Sfax
-     * 
-     *  This search by keyword "développeur" support only one keyword at a time
-     *  https://www.tanitjobs.com/jobs/?listing_type%5Bequal%5D=Job&searchId=1766740966.9314&action=search&keywords%5Ball_words%5D=developpeur
-     * 
-     * description of parameters:
-     *   * we can: specify muliple areas, but only one keyword at a time 
-     */
-    const TANIJOB_REQUEST_BASE_URL = `https://www.tanitjobs.com/jobs/?listing_type%5Bequal%5D=Job`;
-    const keyword: string | undefined = "informatique";
-    const areas: string[] | undefined = ["Tunis", "Ariana", "Ariana Charguia 2", "LAC 3 Z I KHEIREDDINE LE KRAM"];
-    const pathToSave = `./res/tanijobs-jobs/tanijob${keyword && '-' + keyword }${areas && '-' + areas.join("-").replaceAll(" ", "-")}-jobs.json`;
+    taniJobBaseUrl: "https://www.tanitjobs.com/jobs/?listing_type%5Bequal%5D=Job",
+    keywords: ["developpeur", "ingenieur", "technicien", "informatique", "reseau", "systeme"],
+    areas: ["Tunis", "Ariana", "Ben Arous", "Sfax", "Sousse"], 
+    pathToSaveData: "./res/tanijobs-jobs",
+    getUrl: (page?: number, keyword?: string, areas?: string[]) => `${Websites.tanijob.taniJobBaseUrl}&action=search${keyword ? `&keywords%5Ball_words%5D=${encodeURIComponent(keyword)}` : ""}${areas && areas.length > 0 ? `&Location_City[multi_like_and][]=${encodeURIComponent(areas.join(","))}` : ""}${page && page > 1 ? `&page=${page}` : ""}`,
 
-    const getUrl = (page?: number, keyword?: string, areas?: string[]) => `${TANIJOB_REQUEST_BASE_URL}&action=search${keyword ? `&keywords%5Ball_words%5D=${encodeURIComponent(keyword)}` : ""}${areas && areas.length > 0 ? `&Location_City[multi_like_and][]=${encodeURIComponent(areas.join(","))}` : ""}${page && page > 1 ? `&page=${page}` : ""}`;
-    const jobs = await fetchJobWithExtractorAndByNextUrl(
-      getUrl(undefined, keyword, areas),
-      nextPageExtractorTanijob
-      ,
-      { headers: taniJobAuthenticatedHeader },
-      extractListJobsTanijob,
-      pathToSave,
-      { maxRetry: 3, retryDelay: 1000 },
-      maxPageNumber
-    );
-    if(jobs.length > 0) {
-      await Deno.writeFile(pathToSave, new TextEncoder().encode(JSON.stringify({ jobs, version: GlobalConfig.CURRENT_VERSION, hash: await hashCalculator(stableStringify(jobs)), keyword: keyword, areas: areas, platform: "tanijob" }, null, 2)));
-      console.log(`Data saved to ${pathToSave}, total jobs collected: ${jobs.length}`);
-    }else {
-      console.log(`No jobs found for the given criteria.`);
-    }
-  },
+    scrapeListJobs: async (data: { keyword?: string, areas?: string[], pathToSaveData?: string } | undefined = undefined) => {
+      /**
+       * step 1: get all list of jobs possible and put it into a file
+       */
+      const keyword = data?.keyword ?? Websites.tanijob.keywords[0];
+      const areas = data?.areas ?? Websites.tanijob.areas;
+      const pathToSaveData = data?.pathToSaveData ?? Websites.tanijob.pathToSaveData;
+      const saveEndpoint = pathToSaveData || `${Websites.tanijob.pathToSaveData}/tanijobs-jobs-keyword-${keyword ? keyword : "all"}-areas-${areas && areas.length > 0 ? areas.join("-") : "all"}.json`;
+      const jobs = await fetchJobWithExtractorAndByNextUrl(
+        Websites.tanijob.getUrl(undefined, keyword, areas),
+        nextPageExtractorTanijob
+        ,
+        { headers: taniJobAuthenticatedHeader },
+        extractListJobsTanijob,
+        saveEndpoint,
+        { maxRetry: 3, retryDelay: 1000 },
+        1000
+      );
+      if (jobs.length > 0) {
+        await Deno.writeFile(saveEndpoint, new TextEncoder().encode(JSON.stringify({ jobs, version: GlobalConfig.CURRENT_VERSION, hash: await hashCalculator(stableStringify(jobs)), keyword: keyword, areas: areas, platform: "tanijob" }, null, 2)));
+        console.log(`Data saved to ${saveEndpoint}, total jobs collected: ${jobs.length}`);
+      } else {
+        console.log(`No jobs found for the given criteria.`);
+      }
+    },
 
-    scrapeJobDetails: async () => {
+    scrapeJobDetails: async ({globPatternContainsJson, pathToSave}: {globPatternContainsJson: string, pathToSave: string}) => {
       /**
        * Glob generator
        */
       const setOfUrls = new Set<string>();
-      for await (const file of expandGlob("res/tanijobs-jobs/*.json")) {
+      for await (const file of expandGlob(globPatternContainsJson)) {
         // read file content of Json array 
         const fileContent = await Deno.readTextFile(file.path);
         const jsonData: { jobs: { id: number; jobUrl: string }[] } = JSON.parse(fileContent);
@@ -94,8 +76,8 @@ const Websites = {
           setOfUrls.add(fullUrl);
         }
       }
-      const detailedJobs = await fetchJobWithExtractorList([...setOfUrls], { headers: taniJobAuthenticatedHeader }, extractJobFromTanijobDetails, "./res/tanijob-detailed-jobs.json")
-      await Deno.writeFile("./res/tanijob-detailed-jobs.json", new TextEncoder().encode(JSON.stringify({ jobs: detailedJobs, version: GlobalConfig.CURRENT_VERSION, hash: await hashCalculator(stableStringify(detailedJobs)) }, null, 2)));
+      const detailedJobs = await fetchJobWithExtractorList([...setOfUrls], { headers: taniJobAuthenticatedHeader }, extractJobFromTanijobDetails, pathToSave)
+      await Deno.writeFile(pathToSave, new TextEncoder().encode(JSON.stringify({ jobs: detailedJobs, version: GlobalConfig.CURRENT_VERSION, hash: await hashCalculator(stableStringify(detailedJobs)) }, null, 2)));
       logger.info("Extracted detailed jobs saved to tanijob-detailed-jobs.json with length", detailedJobs.length);
     }
   },
@@ -169,6 +151,7 @@ if (import.meta.main) {
   console.log(`Extracted ${endpoints.size} unique endpoints to optioncarriere-endpoints.json`);
    */
 
-  await Websites.tanijob.scrapeJobDetails();
+  // await Websites.tanijob.scrapeListJobs({keyword: "developpeur", areas: ["Tunis", "Sousse"], pathToSaveData: "./res/tanijob-dev-jobs/tanijobs-jobs-developpeur-tunis-sousse.json"});
+  // await Websites.tanijob.scrapeJobDetails({globPatternContainsJson: "./res/tanijob-dev-jobs/**/*.json", pathToSave: "./res/tanijob-dev-jobs/detailed-jobs.json"});
 
 }

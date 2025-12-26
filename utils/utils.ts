@@ -76,10 +76,10 @@ export async function fetchWithRetries(url: string, options: RequestInit = {}, m
  * @param retryOptions retry option on failed {maxRetry: number, retryDelay} 
  * @returns 
  */
-export async function fetchJobWithExtractor<T>(url: string, options: RequestInit = {}, instanceExtractor: (html: string) => T, retryOptions: { maxRetry: number, retryDelay: number } = { maxRetry: 3, retryDelay: 1000 }): Promise<T> {
+export async function fetchJobWithExtractor<T>(url: string, options: RequestInit = {}, instanceExtractor: (html: string) => Promise<T>, retryOptions: { maxRetry: number, retryDelay: number } = { maxRetry: 3, retryDelay: 1000 }): Promise<T> {
   const response = await fetchWithRetries(url, options, retryOptions.maxRetry, retryOptions.retryDelay);
   const content = await response.text();
-  const data = instanceExtractor(content);
+  const data = await instanceExtractor(content);
   return data;
 }
 
@@ -93,7 +93,7 @@ export async function fetchJobWithExtractor<T>(url: string, options: RequestInit
  * @returns T[]
  */
 
-export async function fetchJobWithExtractorList<T>(urls: string[], options: RequestInit = {}, instanceExtractor: (html: string) => T, onFailedLocalBackupPath: string | null = null, retryOptions: { maxRetry: number, retryDelay: number } = { maxRetry: 3, retryDelay: 1000 }) {
+export async function fetchJobWithExtractorList<T>(urls: string[], options: RequestInit = {}, instanceExtractor: (html: string) => Promise<T>, onFailedLocalBackupPath: string | null = null, retryOptions: { maxRetry: number, retryDelay: number } = { maxRetry: 3, retryDelay: 1000 }) {
   const results: T[] = [];
   for (let urlIndex = 0; urlIndex < urls.length; urlIndex++) {
     try {
